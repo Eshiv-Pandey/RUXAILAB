@@ -43,19 +43,18 @@ export default class StudyController extends Controller {
     const answerDoc = await answerController.createAnswer(
       new StudyAnswer({ type: payload.testType, createdBy }),
     )
-    payload.answersDocId = answerDoc.id
-
-    const studyDoc = await super.create(COLLECTION, payload.toFirestore())
+    let studyDoc
     try {
+      payload.answersDocId = answerDoc.id
+      studyDoc = await super.create(COLLECTION, payload.toFirestore())
       await answerController.linkAnswerToStudy(answerDoc.id, studyDoc.id)
+      return studyDoc
     } catch (error) {
-      await Promise.allSettled([
-        super.delete(COLLECTION, studyDoc.id),
-        answerController.delete('answers', answerDoc.id),
-      ])
+      const cleanup = [answerController.delete('answers', answerDoc.id)]
+      if (studyDoc) cleanup.push(super.delete(COLLECTION, studyDoc.id))
+      await Promise.allSettled(cleanup)
       throw error
     }
-    return studyDoc
   }
   async duplicateStudy(payload) {
     try {
@@ -64,24 +63,20 @@ export default class StudyController extends Controller {
         new StudyAnswer({ type: payload.test.testType, createdBy }),
       )
 
-      // Use the correct study type from the payload (already instantiated correctly in SettingsView)
-      const duplicatedStudy = payload.test
-      duplicatedStudy.answersDocId = answerDoc.id
-
-      const studyDoc = await super.create(
-        COLLECTION,
-        duplicatedStudy.toFirestore(),
-      )
+      let studyDoc
       try {
+        // Use the correct study type from the payload (already instantiated correctly in SettingsView)
+        const duplicatedStudy = payload.test
+        duplicatedStudy.answersDocId = answerDoc.id
+        studyDoc = await super.create(COLLECTION, duplicatedStudy.toFirestore())
         await answerController.linkAnswerToStudy(answerDoc.id, studyDoc.id)
+        return studyDoc
       } catch (error) {
-        await Promise.allSettled([
-          super.delete(COLLECTION, studyDoc.id),
-          answerController.delete('answers', answerDoc.id),
-        ])
+        const cleanup = [answerController.delete('answers', answerDoc.id)]
+        if (studyDoc) cleanup.push(super.delete(COLLECTION, studyDoc.id))
+        await Promise.allSettled(cleanup)
         throw error
       }
-      return studyDoc
     } catch (error) {
       throw error
     }
